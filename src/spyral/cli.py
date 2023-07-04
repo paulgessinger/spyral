@@ -7,6 +7,11 @@ import time
 import threading
 import csv
 
+if sys.version_info >= (3, 11):
+        from enum import StrEnum
+else:
+        from backports.strenum import StrEnum
+
 import typer
 import psutil
 import rich.live
@@ -85,7 +90,7 @@ class Monitor:
 
 
 @app.command()
-def main(
+def run(
     cmd: List[str],
     interval: float = typer.Option(0.5, "--interval", "-i"),
     output: Path = typer.Option("spyral.csv", "--output", "-o"),
@@ -104,6 +109,8 @@ def main(
         try:
             while p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
                 for line in iter(p.stdout.readline, b""):
+                    if not t.is_alive():
+                        raise RuntimeError("Monitoring thread has died")
                     live.console.out(line.decode("utf-8"), highlight=False, end="")
         except KeyboardInterrupt:
             mon.terminate = True
@@ -119,22 +126,48 @@ def main(
         plotext.clf()
 
         plotext.plot_size(
-            plotext.terminal_width(), max(20, (plotext.terminal_height() or 70) / 3)
+            plotext.terminal_width(), max(10, (plotext.terminal_height() or 70) / 3)
         )
 
-        plotext.subplots(2, 1)
+        plotext.xlabel("time [s]")
+        plotext.ylabel("memory [M]")
 
-        p1 = plotext.subplot(1, 1)
-        p2 = plotext.subplot(2, 1)
+        plotext.plot(mon.time, mon.rss, label="rss")
 
-        p1.plot(mon.time, mon.rss)
-        p1.title("RSS")
-        p1.xlabel("time [s]")
-        p1.ylabel("rss [M]")
-
-        p2.title("VMS")
-        p2.plot(mon.time, mon.vms)
-        p2.xlabel("time [s]")
-        p2.ylabel("vms [M]")
+        plotext.plot(mon.time, mon.vms, label="vms")
 
         plotext.show()  # to finally plot
+
+class Format(StrEnum):
+    pdf = "pdf"
+    png = "png"
+
+@app.command()
+def plot(csv: Path = typer.Argument(...,dir_okay=False, exists=True), formats: List[Format] = ["pdf"], output: Path = Path.cwd()):
+    console = rich.console.Console()
+    with console.status("Importing plotting modules"):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+    df = pd.read_csv(csv, comment="#")
+    df.rss /= 1e6
+    df.vms /= 1e6
+    fig, ax = plt.subplots()
+    df.plot("time",y="rss", ax=ax, c="tab:orange")
+    df.plot("time",y="vms", ax=ax, c="tab:blue")
+
+    rss_imax = df.rss.argmax()
+    ax.axvline(df.time.iloc[rss_imax], ls="--", c="tab:orange")
+    ax.axhline(df.rss.iloc[rss_imax], ls="--", c="tab:orange")
+
+    vms_imax = df.vms.argmax()
+    ax.axvline(df.time.iloc[vms_imax], ls="--", c="tab:blue")
+    ax.axhline(df.vms.iloc[vms_imax], ls="--", c="tab:blue")
+
+    ax.set(xlabel="time [s]", ylabel="memory [M]")
+
+    fig.tight_layout()
+    for f in formats:
+        fig.savefig(output / f"{csv.stem}.{f.name}")
