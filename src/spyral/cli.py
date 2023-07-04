@@ -118,7 +118,8 @@ def run(
                 for line in iter(p.stdout.readline, b""):
                     if not t.is_alive():
                         print("Monitoring thread has died")
-                        raise mon.exception
+                        print("Exception:", str(mon.exception))
+                        raise RuntimeError("Monitoring thread has died")
                     live.console.out(line.decode("utf-8"), highlight=False, end="")
         except KeyboardInterrupt:
             mon.terminate = True
