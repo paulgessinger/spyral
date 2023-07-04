@@ -33,6 +33,8 @@ class Monitor:
 
     terminate: bool = False
 
+    exception = None
+
     def __init__(
         self,
         command: List[str],
@@ -88,6 +90,9 @@ class Monitor:
                 time.sleep(self.interval)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return
+        except Exception as e:
+            self.exception = e
+            raise e
 
 
 @app.command()
@@ -112,7 +117,8 @@ def run(
             while p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
                 for line in iter(p.stdout.readline, b""):
                     if not t.is_alive():
-                        raise RuntimeError("Monitoring thread has died")
+                        print("Monitoring thread has died")
+                        raise t.exception
                     live.console.out(line.decode("utf-8"), highlight=False, end="")
         except KeyboardInterrupt:
             mon.terminate = True
