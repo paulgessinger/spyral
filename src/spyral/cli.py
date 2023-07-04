@@ -89,6 +89,7 @@ class Monitor:
 
                 time.sleep(self.interval)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
+            print("Main process is gone, terminating monitoring thread")
             return
         except Exception as e:
             self.exception = e
