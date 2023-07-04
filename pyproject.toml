@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "spyral"
-version = "0.5.3"
+name = "spyral-cli"
+version = "1.0.0"
 description = ""
 authors = ["Paul Gessinger <hello@paulgessinger.com>"]
 license = "MIT"

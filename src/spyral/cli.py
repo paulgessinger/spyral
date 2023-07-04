@@ -6,11 +6,12 @@ from pathlib import Path
 import time
 import threading
 import csv
+import platform
 
 if sys.version_info >= (3, 11):
-        from enum import StrEnum
+    from enum import StrEnum
 else:
-        from backports.strenum import StrEnum
+    from backports.strenum import StrEnum
 
 import typer
 import psutil
@@ -94,13 +95,14 @@ def run(
     cmd: List[str],
     interval: float = typer.Option(0.5, "--interval", "-i"),
     output: Path = typer.Option("spyral.csv", "--output", "-o"),
+    summary: bool = sys.stdout.isatty(),
 ):
     p = psutil.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT)
     console = rich.console.Console()
 
-    with rich.live.Live(
-        console=console, transient=not sys.stdout.isatty()
-    ) as live, output.open("w") as ofh:
+    with rich.live.Live(console=console, transient=not summary) as live, output.open(
+        "w"
+    ) as ofh:
         ofh.write("# " + " ".join(cmd) + "\n")
         mon = Monitor(interval=interval, live=live, output=ofh, command=cmd)
         t = threading.Thread(target=mon.run, args=(p,))
@@ -121,7 +123,7 @@ def run(
         p.wait()
         t.join()
 
-    if sys.stdout.isatty():
+    if summary:
         console.rule("Memory usage")
         plotext.clf()
 
@@ -133,20 +135,29 @@ def run(
         plotext.ylabel("memory [M]")
 
         plotext.plot(mon.time, mon.rss, label="rss")
-
-        plotext.plot(mon.time, mon.vms, label="vms")
+        if platform.system() == "Darwin":
+            plotext.plot(mon.time, [v / 1000 for v in mon.vms], label="vms * 10^3")
+        else:
+            plotext.plot(mon.time, mon.vms, label="vms")
 
         plotext.show()  # to finally plot
+
 
 class Format(StrEnum):
     pdf = "pdf"
     png = "png"
 
+
 @app.command()
-def plot(csv: Path = typer.Argument(...,dir_okay=False, exists=True), formats: List[Format] = ["pdf"], output: Path = Path.cwd()):
+def plot(
+    csv: Path = typer.Argument(..., dir_okay=False, exists=True),
+    formats: List[Format] = ["pdf"],
+    output: Path = Path.cwd(),
+):
     console = rich.console.Console()
     with console.status("Importing plotting modules"):
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import pandas as pd
@@ -155,8 +166,8 @@ def plot(csv: Path = typer.Argument(...,dir_okay=False, exists=True), formats: L
     df.rss /= 1e6
     df.vms /= 1e6
     fig, ax = plt.subplots()
-    df.plot("time",y="rss", ax=ax, c="tab:orange")
-    df.plot("time",y="vms", ax=ax, c="tab:blue")
+    df.plot("time", y="rss", ax=ax, c="tab:orange")
+    df.plot("time", y="vms", ax=ax, c="tab:blue")
 
     rss_imax = df.rss.argmax()
     ax.axvline(df.time.iloc[rss_imax], ls="--", c="tab:orange")
