@@ -55,7 +55,7 @@ class Monitor:
     def run(self, p: psutil.Process):
         try:
             start = datetime.now()
-            while p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
+            while p.is_running() and p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
                 if self.terminate:
                     return
                 delta = (datetime.now() - start).total_seconds()
@@ -89,7 +89,6 @@ class Monitor:
 
                 time.sleep(self.interval)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            print("Main process is gone, terminating monitoring thread")
             return
         except Exception as e:
             self.exception = e
@@ -115,9 +114,9 @@ def run(
         t.start()
 
         try:
-            while p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
+            while p.is_running() and p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
                 for line in iter(p.stdout.readline, b""):
-                    if not t.is_alive():
+                    if not t.is_alive() and mon.exception is not None:
                         print("Monitoring thread has died")
                         print("Exception:", str(mon.exception))
                         raise RuntimeError("Monitoring thread has died")
