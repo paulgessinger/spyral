@@ -1,6 +1,7 @@
 from typing import List, IO, Optional
 import subprocess as sp
 import sys
+import re
 from datetime import datetime
 from pathlib import Path
 import time
@@ -55,7 +56,10 @@ class Monitor:
     def run(self, p: psutil.Process):
         try:
             start = datetime.now()
-            while p.is_running() and p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
+            while p.is_running() and p.status() in (
+                psutil.STATUS_RUNNING,
+                psutil.STATUS_SLEEPING,
+            ):
                 if self.terminate:
                     return
                 delta = (datetime.now() - start).total_seconds()
@@ -101,6 +105,7 @@ def run(
     interval: float = typer.Option(0.5, "--interval", "-i"),
     output: Path = typer.Option("spyral.csv", "--output", "-o"),
     summary: bool = sys.stdout.isatty(),
+    label: Optional[str] = typer.Option(None, "--label", "-l"),
 ):
     p = psutil.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT)
     console = rich.console.Console()
@@ -108,13 +113,18 @@ def run(
     with rich.live.Live(console=console, transient=not summary) as live, output.open(
         "w"
     ) as ofh:
-        ofh.write("# " + " ".join(cmd) + "\n")
+        ofh.write("# spyral-cmd: " + " ".join(cmd) + "\n")
+        if label is not None:
+            ofh.write("# spyral-label: " + label + "\n")
         mon = Monitor(interval=interval, live=live, output=ofh, command=cmd)
         t = threading.Thread(target=mon.run, args=(p,))
         t.start()
 
         try:
-            while p.is_running() and p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING):
+            while p.is_running() and p.status() in (
+                psutil.STATUS_RUNNING,
+                psutil.STATUS_SLEEPING,
+            ):
                 for line in iter(p.stdout.readline, b""):
                     if not t.is_alive() and mon.exception is not None:
                         print("Monitoring thread has died")
@@ -189,3 +199,32 @@ def plot(
     fig.tight_layout()
     for f in formats:
         fig.savefig(output / f"{csv.stem}.{f.name}")
+
+
+@app.command()
+def maxima(
+    output: Path = typer.Argument(..., dir_okay=False),
+    inputs: List[Path] = typer.Argument(...),
+    extra_columns: List[str] = typer.Option([], "--extra-column", "-e"),
+):
+    import pandas as pd
+
+    with output.open("a") as fh:
+        writer = csv.writer(fh)
+
+        for i in inputs:
+            cmd = None
+            label = None
+            with i.open("r") as ifh:
+                for _, line in zip(range(10), ifh):
+                    if m := re.match(r" *# spyral-cmd: (.*)", line):
+                        cmd = m.group(1).strip()
+                    if m := re.match(r" *# spyral-label: (.*)", line):
+                        label = m.group(1).strip()
+                        break
+            assert cmd or label
+            if label is None:
+                label = cmd
+
+            df = pd.read_csv(i, comment="#")
+            writer.writerow(extra_columns + [label, df.rss.max(), df.vms.max()])
