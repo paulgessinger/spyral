@@ -169,7 +169,9 @@ class Format(StrEnum):
 def plot(
     csv: Path = typer.Argument(..., dir_okay=False, exists=True),
     formats: List[Format] = ["pdf"],
-    output: Path = Path.cwd(),
+    output: Path = typer.Option(
+        Path.cwd(), "--output", "-o", file_okay=False, exists=True
+    ),
 ):
     console = rich.console.Console()
     with console.status("Importing plotting modules"):
