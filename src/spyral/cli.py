@@ -229,4 +229,6 @@ def maxima(
                 label = cmd
 
             df = pd.read_csv(i, comment="#")
-            writer.writerow(extra_columns + [label, df.rss.max(), df.vms.max()])
+            writer.writerow(
+                extra_columns + [label, df.time.iloc[-1], df.rss.max(), df.vms.max()]
+            )
