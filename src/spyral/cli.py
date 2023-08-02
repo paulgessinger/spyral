@@ -159,6 +159,8 @@ def run(
 
         plotext.show()  # to finally plot
 
+    raise typer.Exit(code=p.returncode)
+
 
 class Format(StrEnum):
     pdf = "pdf"
